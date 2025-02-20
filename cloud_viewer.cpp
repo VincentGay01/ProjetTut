@@ -78,6 +78,7 @@ map<face_descriptor, double> mapdens ;// map de la densité de point en fonction
 map<Point, double> mappointdens; // map de la densité des point en fonction d'un point du maillage
 map<face_descriptor, double> mapdistance ;//map de la distance moyenne des point a une face
 map<Point, double> mapdistpoint;//map distance moyenne a un point maillage
+map<face_descriptor, list<Point>> mapFaces;
 Eigen::Matrix4f transfo;
 //---------
 mesh test;
@@ -108,7 +109,7 @@ pcl::PolygonMesh convert_cgal_to_pcl(const mesh cgal_mesh) {
 }
 
 
-void setPointColor(pcl::PointXYZRGB& point, uint8_t r, uint8_t g, uint8_t b) {
+void setPointColor(pcl::PointXYZRGB& point, int r, int g, int b) {
     uint32_t rgb = (static_cast<uint32_t>(r) << 16 |
         static_cast<uint32_t>(g) << 8 |
         static_cast<uint32_t>(b));
@@ -116,30 +117,23 @@ void setPointColor(pcl::PointXYZRGB& point, uint8_t r, uint8_t g, uint8_t b) {
 }
 
 
-void getColorFromValue(float value, float min_val, float max_val, uint8_t& r, uint8_t& g, uint8_t& b) {
-  
-   
-
-
+void getColorFromValue(float value, float min_val, float max_val, int* r, int* g, int* b) {
     if (value < 0) {
         // Valeurs négatives : Bleu → Blanc
-        double ratio = (value - min_val) / (-min_val);  
+        double ratio = (value - min_val) / (-min_val);
 
-        uint8_t   r = 255.0 * ratio;
-        uint8_t  g = 255.0 * ratio;
-        uint8_t   b = 255;
-       // cout << "la valeur est " <<value<<" inferieur a 0 et le ratio est :"<<ratio<<"la couleur est "<<r <<"M "<<g<<"M "<<b<< endl;
+        *r = static_cast<int>(255.0 * ratio * 10);
+        *g = static_cast<int>(255.0 * ratio * 10);
+        *b = 255;
     }
     else {
         // Valeurs positives : Blanc → Rouge
-        double ratio = value / max_val;  
-        uint8_t  r = 255;
-        uint8_t   g = 255.0 * (1.0 - ratio);
-        uint8_t   b = 255.0 * (1.0 - ratio);
-        //cout << "la valeur est"<<value <<"superieur a 0 et le ratio est : " << ratio << "la couleur est " << r << "M " << g << "M " << b << endl;
+        double ratio = value / max_val;
+
+        *r = 255;
+        *g = static_cast<int>(255.0 * (1.0 - ratio * 10));
+        *b = static_cast<int>(255.0 * (1.0 - ratio * 10));
     }
-  
-    
 }
 
 
@@ -147,7 +141,7 @@ void getColorFromValue(float value, float min_val, float max_val, uint8_t& r, ui
 void convertAndColorMesh(pcl::PolygonMesh& mesh, std::map<Point, double> dico, float min_val, float max_val) {
     // Convertir sensor_msgs::PointCloud2 en pcl::PointCloud<pcl::PointXYZ>
     pcl::PointCloud<pcl::PointXYZ>::Ptr cloudXYZ(new pcl::PointCloud<pcl::PointXYZ>);
-    pcl::fromPCLPointCloud2(mesh.cloud, *cloudXYZ);
+    pcl::fromPCLPointCloud2(cloud2.cloud, *cloudXYZ);
 
     // Créer un nuage coloré
     pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloudXYZRGB(new pcl::PointCloud<pcl::PointXYZRGB>);
@@ -161,18 +155,20 @@ void convertAndColorMesh(pcl::PolygonMesh& mesh, std::map<Point, double> dico, f
         cloudXYZRGB->points[i].x = cloudXYZ->points[i].x;
         cloudXYZRGB->points[i].y = cloudXYZ->points[i].y;
         cloudXYZRGB->points[i].z = cloudXYZ->points[i].z;
-        uint8_t r;
-        uint8_t g;
-        uint8_t b;
+        int r=255;
+        int g=255;
+        int b=255;
         Point lePoint(cloudXYZ->points[i].x, cloudXYZ->points[i].y, cloudXYZ->points[i].z);
-        cout << "la point est" << lePoint << "la valeur est de  : " << dico[lePoint] << endl;
+        
 
-        getColorFromValue(dico[lePoint], min_val, max_val, r, g, b);
+        getColorFromValue(dico[lePoint], min_val, max_val, &r, &g, &b);
         setPointColor(cloudXYZRGB->points[i], r, g, b);
+        cout << "la point est" << lePoint << "la valeur est de  : " << dico[lePoint] <<"valeur des courleurs "<<r<<": "<<g <<": "<<b <<" :" << endl;
+
     }
 
 
-    pcl::toPCLPointCloud2(*cloudXYZRGB, mesh.cloud);
+    pcl::toPCLPointCloud2(*cloudXYZRGB, cloud2.cloud);
 }
 
 
@@ -234,8 +230,6 @@ loadingPlyAndPcdView(mesh poly)
     verifier qu'un point n'apparait pas plusieurs 
 
     identifier quelle point appartient a face  
-
-
 */
 
 double testFace(mesh poly, PointCloud<PointXYZ>::Ptr nuage)
@@ -256,7 +250,11 @@ double testFace(mesh poly, PointCloud<PointXYZ>::Ptr nuage)
         Tree::Point_and_primitive_id closest = tree.closest_point_and_primitive(query);
         Point closest_point = closest.first;
         face_descriptor closest_face = closest.second;
+        mapFaces[closest_face].push_back(query);
         if (closest_face != boost::graph_traits<mesh>::null_face()) {
+
+            
+
             mapdens[closest_face]++;
             mappointdens[closest_point]++;
             // Calculer la distance au carré entre le point et le point le plus proche sur la face
@@ -275,28 +273,37 @@ double testFace(mesh poly, PointCloud<PointXYZ>::Ptr nuage)
             }
             dist = std::sqrt(sq_distance) * signe;
             mapdistance[closest_face] += dist;
-            if (mapdistpoint.find(closest_point) != mapdistpoint.end()) {
-                if (mapdistpoint[closest_point] > dist)
-                {
-                    if (abs(dist) < 0.01)
+
+            for (auto v : CGAL::vertices_around_face(poly.halfedge(closest_face), poly)) {
+                FT distancept = CGAL::squared_distance(query, poly.point(v));
+                //---------------------------------------------------------
+                if (mapdistpoint.find(poly.point(v)) != mapdistpoint.end()) {
+                
+                    if (mapdistpoint[poly.point(v)] > distancept)
                     {
-                        mapdistpoint[closest_point] = 0;
+                        if (abs(distancept) < 0.01)
+                        {
+                            mapdistpoint[poly.point(v)] = 0;
+                        }
+                        else
+                        {
+                            mapdistpoint[poly.point(v)] = distancept;
+                        }
+                    }
+                
+                }
+                else {
+                    if (abs(distancept) < 0.01)
+                    {
+                        mapdistpoint[poly.point(v)] = 0;
                     }
                     else
                     {
-                        mapdistpoint[closest_point] = dist;
+                        mapdistpoint[poly.point(v)] = distancept;
                     }
+
                 }
-            }
-            else {
-                if (abs(dist) < 0.01)
-                {
-                    mapdistpoint[closest_point] = 0;
-                }
-                else
-                {
-                    mapdistpoint[closest_point] = dist;
-                }
+                //-----------------------------------------------------------
             }
             score += dist;
         }
@@ -550,13 +557,22 @@ void getResultat()
 
     }
 
+    for (auto key : mapFaces)
+    {
+        outfile << "id de la face  " << key.first <<  std::endl;
+        for (auto pt : key.second)
+        {
+            outfile << "id du point  " << pt << std::endl;
+        }
+    }
+
     outfile.close();
 
     
 
     // Sauvegarde du nuage en fichier PLY
     std::string filename = "colored_cloud.ply";
-    if (pcl::io::savePLYFileBinary(filename, cloud2) == 0) {
+    if (pcl::io::savePLYFile(filename, cloud2) == 0) {
         std::cout << "Fichier PLY sauvegardé : " << filename << std::endl;
     }
     else {
@@ -657,7 +673,7 @@ int
 main ()
 {
     /*
-    loadBoth("D:/project/projettut/sphere.pcd", "D:/project/projettut/sphere.ply");
+    loadBoth("D:/project/projettut/test/sphere.pcd", "D:/project/projettut/sphere.ply");
     */
 
     Comparaison();
