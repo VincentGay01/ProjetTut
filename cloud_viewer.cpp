@@ -21,6 +21,11 @@
 #include <pcl/registration/correspondence_estimation.h>
 #include <pcl/registration/correspondence_rejection_sample_consensus.h>
 #include <pcl/registration/ia_ransac.h>
+#include <pcl/features/normal_3d_omp.h>  // OpenMP pour NormalEstimation
+#include <pcl/features/fpfh_omp.h>       // OpenMP pour FPFH
+#include <future>  // Pour exécuter les tâches en parallèle
+#include <pcl/registration/sample_consensus_initial_alignment.h>
+#include <omp.h>
 //----------------------------------------------------------------------------------------------
 #include <cstdint>
 #include <fstream>
@@ -407,24 +412,29 @@ PointCloud<pcl::PointXYZ>::Ptr align_point_clouds(
     icp.setInputTarget(cloud_target);
 
     // Modifier les paramètres ICP
-    icp.setMaximumIterations(iteration);  // Augmenter le nombre d'itérations pour plus de précision // 1000
-    icp.setTransformationEpsilon(transfoEpsi);  // Critère d'arrêt basé sur le changement de transformation //1e-8
-    icp.setEuclideanFitnessEpsilon(Fitness);  // Critère d'arrêt basé sur la distance moyenne //1e-5
-    icp.setMaxCorrespondenceDistance(Maxcorres);  // Distance maximale entre correspondances//1.5
-    icp.setRANSACIterations(Iterransac);  // Utilisation de RANSAC pour un alignement initial robuste //2000
-    icp.setRANSACOutlierRejectionThreshold(outlier);  // Seuil pour le rejet des outliers RANSAC //1.4
-
+    icp.setMaximumIterations(iteration);
+    icp.setTransformationEpsilon(transfoEpsi);
+    icp.setEuclideanFitnessEpsilon(Fitness);
+    icp.setMaxCorrespondenceDistance(Maxcorres);
+    icp.setRANSACIterations(Iterransac);
+    icp.setRANSACOutlierRejectionThreshold(outlier);
 
     // Nuage de points pour stocker le résultat aligné
-    PointCloud<pcl::PointXYZ>::Ptr aligned_cloud(new PointCloud<PointXYZ>);
+    PointCloud<pcl::PointXYZ>::Ptr aligned_cloud(new PointCloud<pcl::PointXYZ>);
 
-    // Exécuter l'alignement ICP
-    icp.align(*aligned_cloud);
+    // Exécuter l'alignement ICP en activant le multi-threading
+#pragma omp parallel
+    {
+#pragma omp single
+        std::cout << "Nombre de threads OpenMP utilisés : " << omp_get_num_threads() << std::endl;
+
+#pragma omp single
+        icp.align(*aligned_cloud);
+    }
 
     // Vérifier la convergence
     if (icp.hasConverged()) {
         std::cout << "ICP converged with score: " << icp.getFitnessScore() << std::endl;
-      // transfo = icp.getFinalTransformation();
     }
     else {
         std::cerr << "ICP did not converge!" << std::endl;
@@ -436,31 +446,39 @@ PointCloud<pcl::PointXYZ>::Ptr align_point_clouds(
 
 pcl::PointCloud<pcl::Normal>::Ptr estimate_normals(
     pcl::PointCloud<pcl::PointXYZ>::Ptr cl,
-    double radius 
+    double radius
 ) {
-    pcl::NormalEstimation<pcl::PointXYZ, pcl::Normal> ne;
+    pcl::NormalEstimationOMP<pcl::PointXYZ, pcl::Normal> ne;  // Utilisation d'OpenMP
+    ne.setNumberOfThreads(10);  // Nombre de threads pour le calcul parallèle
+
     pcl::PointCloud<pcl::Normal>::Ptr normals(new pcl::PointCloud<pcl::Normal>());
     pcl::search::KdTree<pcl::PointXYZ>::Ptr tree(new pcl::search::KdTree<pcl::PointXYZ>());
+
     ne.setInputCloud(cl);
     ne.setSearchMethod(tree);
-    ne.setRadiusSearch(radius); //valeur utiliser 2
+    ne.setRadiusSearch(radius);
     ne.compute(*normals);
+
     return normals;
 }
 
 pcl::PointCloud<pcl::FPFHSignature33>::Ptr compute_fpfh_features(
     pcl::PointCloud<pcl::PointXYZ>::Ptr cl,
     pcl::PointCloud<pcl::Normal>::Ptr normals,
-    double radius 
+    double radius
 ) {
-    pcl::FPFHEstimation<pcl::PointXYZ, pcl::Normal, pcl::FPFHSignature33> fpfh;
+    pcl::FPFHEstimationOMP<pcl::PointXYZ, pcl::Normal, pcl::FPFHSignature33> fpfh;  // Utilisation d'OpenMP
+    fpfh.setNumberOfThreads(10);
+
     pcl::PointCloud<pcl::FPFHSignature33>::Ptr features(new pcl::PointCloud<pcl::FPFHSignature33>());
     pcl::search::KdTree<pcl::PointXYZ>::Ptr tree(new pcl::search::KdTree<pcl::PointXYZ>());
+
     fpfh.setInputCloud(cl);
     fpfh.setInputNormals(normals);
     fpfh.setSearchMethod(tree);
-    fpfh.setRadiusSearch(radius); //valeur utiliser 5
+    fpfh.setRadiusSearch(radius);
     fpfh.compute(*features);
+
     return features;
 }
 
@@ -473,8 +491,9 @@ pcl::PointCloud<pcl::PointXYZ>::Ptr align_with_descriptors(
     double distanceCorres,
     double IterMax
 ) {
-    cout << "on commence " << "align" << endl;
+    std::cout << "on commence align" << std::endl;
     pcl::SampleConsensusInitialAlignment<pcl::PointXYZ, pcl::PointXYZ, pcl::FPFHSignature33> sac_ia;
+
     sac_ia.setInputSource(source_cloud);
     sac_ia.setSourceFeatures(source_features);
     sac_ia.setInputTarget(target_cloud);
@@ -484,12 +503,12 @@ pcl::PointCloud<pcl::PointXYZ>::Ptr align_with_descriptors(
     sac_ia.setMaximumIterations(IterMax);
 
     pcl::PointCloud<pcl::PointXYZ>::Ptr aligned_cloud(new pcl::PointCloud<pcl::PointXYZ>());
-    
+
     sac_ia.align(*aligned_cloud);
-    cout << "on fini " << "align" << endl;
+
+    std::cout << "on fini align" << std::endl;
     if (sac_ia.hasConverged()) {
         std::cout << "SAC-IA converged with score: " << sac_ia.getFitnessScore() << std::endl;
-       
     }
     else {
         std::cerr << "SAC-IA did not converge!" << std::endl;

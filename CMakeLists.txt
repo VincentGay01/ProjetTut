@@ -19,6 +19,9 @@ set(Boost_DEBUG ON)
 set(Boost_USE_STATIC_LIBS ON)
 set(Boost_USE_STATIC ON)
 
+find_package(OpenMP REQUIRED)
+
+
 find_package(PCL 1.14 REQUIRED)
 include_directories(${PCL_INCLUDE_DIRS})
 link_directories(${PCL_LIBRARY_DIRS})
@@ -27,7 +30,7 @@ add_definitions(${PCL_DEFINITIONS})
 find_package(CGAL REQUIRED)
 add_executable (cloud_viewer cloud_viewer.cpp)
 
-target_link_libraries (cloud_viewer ${PCL_LIBRARIES} CGAL )
+target_link_libraries (cloud_viewer ${PCL_LIBRARIES} CGAL OpenMP::OpenMP_CXX )
 
 
 if (CMAKE_VERSION VERSION_GREATER 3.12)
