@@ -46,7 +46,7 @@
 #include <CGAL/bounding_box.h>
 #include <CGAL/Polygon_mesh_processing/measure.h>
 #include <CGAL/Polygon_mesh_processing/distance.h>
-
+#include <ctime>
 using namespace std;
 using namespace pcl;
 int user_data;
@@ -121,18 +121,20 @@ void getColorFromValue(float value, float min_val, float max_val, int* r, int* g
     if (value < 0) {
         // Valeurs négatives : Bleu → Blanc
         double ratio = (value - min_val) / (-min_val);
+        ratio = std::clamp(ratio, 0.0, 1.0);
 
-        *r = static_cast<int>(255.0 * ratio * 10);
-        *g = static_cast<int>(255.0 * ratio * 10);
+        *r = static_cast<int>(255.0 * ratio);
+        *g = static_cast<int>(255.0 * ratio);
         *b = 255;
     }
     else {
         // Valeurs positives : Blanc → Rouge
         double ratio = value / max_val;
+        ratio = std::clamp(ratio, 0.0, 1.0);
 
         *r = 255;
-        *g = static_cast<int>(255.0 * (1.0 - ratio * 10));
-        *b = static_cast<int>(255.0 * (1.0 - ratio * 10));
+        *g = static_cast<int>(255.0 * (1.0 - ratio));
+        *b = static_cast<int>(255.0 * (1.0 - ratio));
     }
 }
 
@@ -163,7 +165,7 @@ void convertAndColorMesh(pcl::PolygonMesh& mesh, std::map<Point, double> dico, f
 
         getColorFromValue(dico[lePoint], min_val, max_val, &r, &g, &b);
         setPointColor(cloudXYZRGB->points[i], r, g, b);
-        cout << "la point est" << lePoint << "la valeur est de  : " << dico[lePoint] <<"valeur des courleurs "<<r<<": "<<g <<": "<<b <<" :" << endl;
+       // cout << "la point est" << lePoint << "la valeur est de  : " << dico[lePoint] <<"valeur des courleurs "<<r<<": "<<g <<": "<<b <<" :" << endl;
 
     }
 
@@ -220,16 +222,10 @@ loadingPlyAndPcdView(mesh poly)
 
 
 /*
-    faire une fonction pour récuperer tous les sommet d'un face puit calculer la distance du point a ces sommet et les ajouter dans la map 
-    si distance inferieur a celle déjà ecris alors on prend
-
-    sinon prendre barrycentrique avec l'air des triangle pour determiner la distance au sommet 
-
-
+   
     donne la liste d'appartennance des points a chaque face le faire dans test face faire une map comme clé id face et comme second liste de points
     verifier qu'un point n'apparait pas plusieurs 
 
-    identifier quelle point appartient a face  
 */
 
 double testFace(mesh poly, PointCloud<PointXYZ>::Ptr nuage)
@@ -279,7 +275,7 @@ double testFace(mesh poly, PointCloud<PointXYZ>::Ptr nuage)
                 //---------------------------------------------------------
                 if (mapdistpoint.find(poly.point(v)) != mapdistpoint.end()) {
                 
-                    if (mapdistpoint[poly.point(v)] > distancept)
+                    if (mapdistpoint[poly.point(v)] > distancept*signe)
                     {
                         if (abs(distancept) < 0.01)
                         {
@@ -287,7 +283,7 @@ double testFace(mesh poly, PointCloud<PointXYZ>::Ptr nuage)
                         }
                         else
                         {
-                            mapdistpoint[poly.point(v)] = distancept;
+                            mapdistpoint[poly.point(v)] = distancept*signe;
                         }
                     }
                 
@@ -299,7 +295,7 @@ double testFace(mesh poly, PointCloud<PointXYZ>::Ptr nuage)
                     }
                     else
                     {
-                        mapdistpoint[poly.point(v)] = distancept;
+                        mapdistpoint[poly.point(v)] = distancept*signe;
                     }
 
                 }
@@ -600,10 +596,15 @@ void Comparaison()
     cout << "la valeur qui a donner le meilleur resultat pour mes test est 2" << endl;
     cin >> radiusnorm;
     // Extraire les normales
+    clock_t start = clock(); // Début du chrono
     auto source_normals = estimate_normals(cloud, radiusnorm);
     cout << "source normale" << "defini" << endl;
     auto target_normals = estimate_normals(cloudsec, radiusnorm);
     cout << "target normals" << "defini" << endl;
+    clock_t end = clock(); // Fin du chrono
+    double elapsed1 = double(end - start) / CLOCKS_PER_SEC; // Conversion en secondes
+    std::cout << "Temps d'exécution : " << elapsed1 << " secondes\n";
+
     // Calculer les descripteurs FPFH
 
     cout << "entrer le radius a utiliser pour le calcul de feature du fpfh" << endl;
@@ -611,10 +612,14 @@ void Comparaison()
     cout << "la valeur qui a donner le meilleur resultat est 5 plus cette valeur est grande plus le programme est long mais précis" << endl;
 
     cin >> radiusfeat;
+    clock_t start1 = clock(); // Début du chrono
     auto source_features = compute_fpfh_features(cloud, source_normals,radiusfeat);
     cout << "source feature" << "defini" << endl;
     auto target_features = compute_fpfh_features(cloudsec, target_normals,radiusfeat);
     cout << "target feature" << "defini" << endl;
+    clock_t end1 = clock(); // Fin du chrono
+    double elapsed2 = double(end1 - start1) / CLOCKS_PER_SEC; // Conversion en secondes
+    std::cout << "Temps d'exécution : " << elapsed2 << " secondes\n";
     // Aligner les nuages avec les descripteurs
 
     double distSam;
@@ -627,7 +632,11 @@ void Comparaison()
     cin >> distCor;
     cout << "le nombre d iteration de la correspondance (100)" << endl;
     cin >> iter;
+    clock_t start2 = clock(); // Début du chrono
     auto initial_aligned_cloud = align_with_descriptors(cloud, source_features, cloudsec, target_features, distSam, distCor, iter);
+    clock_t end2 = clock(); // Fin du chrono
+    double elapsed3 = double(end2 - start2) / CLOCKS_PER_SEC; // Conversion en secondes
+    std::cout << "Temps d'exécution : " << elapsed3 << " secondes\n";
     cout << "initial_aligned_cloud" << "defini" << endl;
     // Appliquer ICP pour raffiner l'alignement
 
@@ -673,7 +682,7 @@ int
 main ()
 {
     /*
-    loadBoth("D:/project/projettut/test/sphere.pcd", "D:/project/projettut/sphere.ply");
+    loadBoth("D:/project/projettut/test/tete_VenusMilo.pcd", "D:/project/projettut/sphere.ply");
     */
 
     Comparaison();
