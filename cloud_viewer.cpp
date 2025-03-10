@@ -24,7 +24,7 @@
 #include <pcl/features/normal_3d_omp.h>  // OpenMP pour NormalEstimation
 #include <pcl/features/fpfh_omp.h>       // OpenMP pour FPFH
 #include <future>  // Pour exécuter les tâches en parallèle
-#include <pcl/registration/sample_consensus_initial_alignment.h>
+#include <pcl/registration/icp_nl.h>
 #include <omp.h>
 //----------------------------------------------------------------------------------------------
 #include <cstdint>
@@ -492,6 +492,7 @@ pcl::PointCloud<pcl::PointXYZ>::Ptr align_with_descriptors(
     double IterMax
 ) {
     std::cout << "on commence align" << std::endl;
+
     pcl::SampleConsensusInitialAlignment<pcl::PointXYZ, pcl::PointXYZ, pcl::FPFHSignature33> sac_ia;
 
     sac_ia.setInputSource(source_cloud);
