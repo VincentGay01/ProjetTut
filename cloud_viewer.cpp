@@ -226,12 +226,7 @@ loadingPlyAndPcdView(mesh poly)
 
 
 
-/*
-   
-    donne la liste d'appartennance des points a chaque face le faire dans test face faire une map comme clé id face et comme second liste de points
-    verifier qu'un point n'apparait pas plusieurs 
 
-*/
 
 double testFace(mesh poly, PointCloud<PointXYZ>::Ptr nuage)
 {
@@ -312,6 +307,10 @@ double testFace(mesh poly, PointCloud<PointXYZ>::Ptr nuage)
           
         }
     }
+    for (auto key : mapdistance)
+    {
+        key.second = key.second / nombrepoint;
+    }
     return score/nombrepoint;
 }
 
@@ -362,7 +361,6 @@ std::vector<Point> sample_mesh_faces(const mesh& poly, double density) {
     CGAL::Polygon_mesh_processing::sample_triangle_mesh(
         poly,
         std::back_inserter(sampled_points),
-        //CGAL::Polygon_mesh_processing::parameters::use_random_uniform_sampling(true),
         CGAL::Polygon_mesh_processing::parameters::number_of_points_on_faces(density)
         );
     ;
@@ -435,6 +433,7 @@ PointCloud<pcl::PointXYZ>::Ptr align_point_clouds(
     // Vérifier la convergence
     if (icp.hasConverged()) {
         std::cout << "ICP converged with score: " << icp.getFitnessScore() << std::endl;
+        std::cout << "Matrice de transformation: " << icp.getFinalTransformation()<< std::endl;
     }
     else {
         std::cerr << "ICP did not converge!" << std::endl;
@@ -510,6 +509,7 @@ pcl::PointCloud<pcl::PointXYZ>::Ptr align_with_descriptors(
     std::cout << "on fini align" << std::endl;
     if (sac_ia.hasConverged()) {
         std::cout << "SAC-IA converged with score: " << sac_ia.getFitnessScore() << std::endl;
+        std::cout << "SAC-IA matrice de transformation: " << sac_ia.getFinalTransformation() << std::endl;
     }
     else {
         std::cerr << "SAC-IA did not converge!" << std::endl;
@@ -607,92 +607,126 @@ void Comparaison()
     cout << "entrer le path du fichier ply" << endl;
     cin >> pathply;
 
-    loadBoth(pathpcd, pathply);
-    cloudsec = addAndConvert(test, 1);
-    cout << "pcd et ply" << "defini" << endl;
+    cout << "voulez vous passez l'etape d'alignement ?" << endl;
+    cout << "oui : Y" << endl;
+    cout << "non : N" << endl;
+    string choix;
+    cin >> choix;
 
-    cout << "entrer le radius a utiliser pour le calcul de normal" << endl;
-    double radiusnorm;
-    cout << "la valeur qui a donner le meilleur resultat pour mes test est 2" << endl;
-    cin >> radiusnorm;
-    // Extraire les normales
-    clock_t start = clock(); // Début du chrono
-    auto source_normals = estimate_normals(cloud, radiusnorm);
-    cout << "source normale" << "defini" << endl;
-    auto target_normals = estimate_normals(cloudsec, radiusnorm);
-    cout << "target normals" << "defini" << endl;
-    clock_t end = clock(); // Fin du chrono
-    double elapsed1 = double(end - start) / CLOCKS_PER_SEC; // Conversion en secondes
-    std::cout << "Temps d'exécution : " << elapsed1 << " secondes\n";
+        if(choix =="Y")
+        {
+            loadBoth(pathpcd, pathply);
+            cout << "pcd et ply" << "defini" << endl;
+            testFace(test,cloud);
+            cloudXYZRG = convertToPointXYZRGB(cloud, 255, 0, 0);
+            loadingPlyAndPcdView(test);
+            getResultat();
+        }
+        else
+        {
 
-    // Calculer les descripteurs FPFH
 
-    cout << "entrer le radius a utiliser pour le calcul de feature du fpfh" << endl;
-    double  radiusfeat;
-    cout << "la valeur qui a donner le meilleur resultat est 5 plus cette valeur est grande plus le programme est long mais précis" << endl;
+            //----------------------------------------------------
+            cout << "entrer le radius a utiliser pour le calcul de normal" << endl;
+            double radiusnorm;
+            cout << "la valeur qui a donner le meilleur resultat pour mes test est 2" << endl;
+            cin >> radiusnorm;
 
-    cin >> radiusfeat;
-    clock_t start1 = clock(); // Début du chrono
-    auto source_features = compute_fpfh_features(cloud, source_normals,radiusfeat);
-    cout << "source feature" << "defini" << endl;
-    auto target_features = compute_fpfh_features(cloudsec, target_normals,radiusfeat);
-    cout << "target feature" << "defini" << endl;
-    clock_t end1 = clock(); // Fin du chrono
-    double elapsed2 = double(end1 - start1) / CLOCKS_PER_SEC; // Conversion en secondes
-    std::cout << "Temps d'exécution : " << elapsed2 << " secondes\n";
-    // Aligner les nuages avec les descripteurs
 
-    double distSam;
-    double distCor;
-    double iter;
+            cout << "entrer le radius a utiliser pour le calcul de feature du fpfh" << endl;
+            double  radiusfeat;
+            cout << "la valeur qui a donner le meilleur resultat est 5 plus cette valeur est grande plus le programme est long mais précis" << endl;
+            cin >> radiusfeat;
 
-    cout << "entrer les valeurs pour : la distance minimal de sample (0.09)" << endl;
-    cin >> distSam;
-    cout << "la distance de correspondance maximal (1)" << endl;
-    cin >> distCor;
-    cout << "le nombre d iteration de la correspondance (100)" << endl;
-    cin >> iter;
-    clock_t start2 = clock(); // Début du chrono
-    auto initial_aligned_cloud = align_with_descriptors(cloud, source_features, cloudsec, target_features, distSam, distCor, iter);
-    clock_t end2 = clock(); // Fin du chrono
-    double elapsed3 = double(end2 - start2) / CLOCKS_PER_SEC; // Conversion en secondes
-    std::cout << "Temps d'exécution : " << elapsed3 << " secondes\n";
-    cout << "initial_aligned_cloud" << "defini" << endl;
-    // Appliquer ICP pour raffiner l'alignement
+            double distSam;
+            double distCor;
+            double iter;
 
-    cout << "entrer les valeurs pour l'icp" << endl;
+            cout << "entrer les valeurs pour : la distance minimal de sample (0.09)" << endl;
+            cin >> distSam;
+            cout << "la distance de correspondance maximal (1)" << endl;
+            cin >> distCor;
+            cout << "le nombre d iteration de la correspondance (100)" << endl;
+            cin >> iter;
 
-    cout << "entrer le nombre d iteration (1000)" << endl;
-    double itericp;
-    cin >> itericp;
 
-    cout << "entrer le Critere d'arret (1e-8)" << endl;
-    double crit;
-    cin >> crit;
+            // Appliquer ICP pour raffiner l'alignement
 
-    cout << "entrer le second Critere d'arret (1e-5)" << endl;
-    double secCrit;
-    cin >> secCrit;
+            cout << "entrer les valeurs pour l'icp" << endl;
 
-    cout << "entrer la distance maximal entre correspondance (1.5)" << endl;
-    double distcorMax;
-    cin >> distcorMax;
+            cout << "entrer le nombre d iteration (1000)" << endl;
+            double itericp;
+            cin >> itericp;
 
-    cout << "entrer le nombre d'iteration de ransac (2000)" << endl;
-    double iterrans;
-    cin >> iterrans;
+            cout << "entrer le Critere d'arret (1e-8)" << endl;
+            double crit;
+            cin >> crit;
 
-    cout << "entrer le seuil de rejet pour les outlier (1.4)" << endl;
-    double seuil;
-    cin >> seuil;
-    auto final_aligned_cloud = align_point_clouds(initial_aligned_cloud, cloudsec,itericp,crit,secCrit,distcorMax,iterrans,seuil);
-    cout << "final_aligned_cloud" << "defini" << transfo << endl;
-    cloudXYZRG = convertToPointXYZRGB(final_aligned_cloud, 255, 0, 0);
-    double score = 0;
-    score = testFace(test, final_aligned_cloud);
+            cout << "entrer le second Critere d'arret (1e-5)" << endl;
+            double secCrit;
+            cin >> secCrit;
 
-    loadingPlyAndPcdView(test);
-    getResultat();
+            cout << "entrer la distance maximal entre correspondance (1.5)" << endl;
+            double distcorMax;
+            cin >> distcorMax;
+
+            cout << "entrer le nombre d'iteration de ransac (2000)" << endl;
+            double iterrans;
+            cin >> iterrans;
+
+            cout << "entrer le seuil de rejet pour les outlier (1.4)" << endl;
+            double seuil;
+            cin >> seuil;
+
+            //----------------------------------------------------
+            loadBoth(pathpcd, pathply);
+            cloudsec = addAndConvert(test, 1);
+            cout << "pcd et ply" << "defini" << endl;
+
+
+            // Extraire les normales
+            clock_t start = clock(); // Début du chrono
+            auto source_normals = estimate_normals(cloud, radiusnorm);
+            cout << "source normale" << "defini" << endl;
+            auto target_normals = estimate_normals(cloudsec, radiusnorm);
+            cout << "target normals" << "defini" << endl;
+            clock_t end = clock(); // Fin du chrono
+            double elapsed1 = double(end - start) / CLOCKS_PER_SEC; // Conversion en secondes
+            std::cout << "Temps d'exécution : " << elapsed1 << " secondes\n";
+
+            // Calculer les descripteurs FPFH
+
+            clock_t start1 = clock(); // Début du chrono
+            auto source_features = compute_fpfh_features(cloud, source_normals, radiusfeat);
+            cout << "source feature" << "defini" << endl;
+            auto target_features = compute_fpfh_features(cloudsec, target_normals, radiusfeat);
+            cout << "target feature" << "defini" << endl;
+            clock_t end1 = clock(); // Fin du chrono
+            double elapsed2 = double(end1 - start1) / CLOCKS_PER_SEC; // Conversion en secondes
+            std::cout << "Temps d'exécution : " << elapsed2 << " secondes\n";
+            // Aligner les nuages avec les descripteurs
+
+
+            clock_t start2 = clock(); // Début du chrono
+            auto initial_aligned_cloud = align_with_descriptors(cloud, source_features, cloudsec, target_features, distSam, distCor, iter);
+            clock_t end2 = clock(); // Fin du chrono
+            double elapsed3 = double(end2 - start2) / CLOCKS_PER_SEC; // Conversion en secondes
+            std::cout << "Temps d'exécution : " << elapsed3 << " secondes\n";
+            cout << "initial_aligned_cloud" << "defini" << endl;
+
+            auto final_aligned_cloud = align_point_clouds(initial_aligned_cloud, cloudsec, itericp, crit, secCrit, distcorMax, iterrans, seuil);
+            cout << "final_aligned_cloud" << "defini" << transfo << endl;
+            cloudXYZRG = convertToPointXYZRGB(final_aligned_cloud, 255, 0, 0);
+            double score = 0;
+            clock_t start3 = clock(); // Début du chrono
+            score = testFace(test, final_aligned_cloud);
+            clock_t end3 = clock(); // Fin du chrono
+            double elapsed4 = double(end3 - start3) / CLOCKS_PER_SEC; // Conversion en secondes
+            std::cout << "Temps d'exécution : " << elapsed4 << " secondes\n";
+            loadingPlyAndPcdView(test);
+            getResultat();
+        }
+    
 }
 
 
