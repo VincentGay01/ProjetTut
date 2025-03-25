@@ -83,6 +83,7 @@ map<face_descriptor, double> mapdens ;// map de la densité de point en fonction
 map<Point, double> mappointdens; // map de la densité des point en fonction d'un point du maillage
 map<face_descriptor, double> mapdistance ;//map de la distance moyenne des point a une face
 map<Point, double> mapdistpoint;//map distance moyenne a un point maillage
+map<face_descriptor, map<Point, double>> facePointdist;//map pour voir quelle point appartient a quelle face et leurs distance a cette face 
 map<face_descriptor, list<Point>> mapFaces;
 Eigen::Matrix4f transfo;
 //---------
@@ -269,7 +270,7 @@ double testFace(mesh poly, PointCloud<PointXYZ>::Ptr nuage)
             }
             dist = std::sqrt(sq_distance) * signe;
             mapdistance[closest_face] += dist;
-
+            facePointdist[closest_face][query] = dist;
             for (auto v : CGAL::vertices_around_face(poly.halfedge(closest_face), poly)) {
                 FT distancept = CGAL::squared_distance(query, poly.point(v));
                 //---------------------------------------------------------
@@ -307,6 +308,7 @@ double testFace(mesh poly, PointCloud<PointXYZ>::Ptr nuage)
           
         }
     }
+
     for (auto key : mapdistance)
     {
         key.second = key.second / nombrepoint;
@@ -583,8 +585,26 @@ void getResultat()
     }
 
     outfile.close();
+    std::ofstream file("resultat.csv");
+    if (!file.is_open()) {
+        std::cerr << "Erreur lors de l'ouverture du fichier !" << std::endl;
+        return;
+    }
 
-    
+    // Écrire l'en-tête du fichier CSV
+    file << "Face ID,Point X,Point Y,Point Z,Distance\n";
+
+    // Écrire les données de la map
+    for (const auto& [face, pointMap] : facePointdist) {
+        for (const auto& [point, distance] : pointMap) {
+            file << face.idx() << ","  // Utilise idx() pour obtenir un ID de face unique
+                << point.x() << "," << point.y() << "," << point.z() << ","
+                << distance << "\n";
+        }
+    }
+
+    file.close();
+    std::cout << "Fichier CSV écrit avec succès : " << "resultat.csv" << std::endl;
 
     // Sauvegarde du nuage en fichier PLY
     std::string filename = "colored_cloud.ply";
@@ -617,7 +637,11 @@ void Comparaison()
         {
             loadBoth(pathpcd, pathply);
             cout << "pcd et ply" << "defini" << endl;
+            clock_t start = clock(); // Début du chrono
             testFace(test,cloud);
+            clock_t end = clock(); // Fin du chrono
+            double elapsed1 = double(end - start) / CLOCKS_PER_SEC; // Conversion en secondes
+            std::cout << "Temps d'exécution : " << elapsed1 << " secondes\n";
             cloudXYZRG = convertToPointXYZRGB(cloud, 255, 0, 0);
             loadingPlyAndPcdView(test);
             getResultat();
