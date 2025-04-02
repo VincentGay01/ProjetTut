@@ -13,7 +13,7 @@ endif()
 
 
 cmake_minimum_required(VERSION 3.5 FATAL_ERROR)
-include(C:/vcpkg/scripts/buildsystems/vcpkg.cmake)
+#include(C:/vcpkg/scripts/buildsystems/vcpkg.cmake)
 project(cloud_viewer)
 set(Boost_DEBUG ON)
 set(Boost_USE_STATIC_LIBS ON)
